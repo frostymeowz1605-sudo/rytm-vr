@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PULSEGRID — VR Rhythm Arcade</title>
+<style>
+  :root{
+    --bg-void:#0B0714;
+    --bg-panel:#171226;
+    --bg-panel-2:#1F1832;
+    --accent-magenta:#FF3D8A;
+    --accent-cyan:#29F1D6;
+    --accent-gold:#FFC94A;
+    --text-primary:#F4F0FF;
+    --text-dim:#8A7FA8;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--bg-void);
+    font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+    color:var(--text-primary);
+  }
+  #scene-container{position:fixed;inset:0;z-index:0;}
+  #scene-container canvas{display:block;}
+
+  .hex-btn{
+    position:relative;
+    border:none;
+    cursor:pointer;
+    padding:18px 40px;
+    font-family:inherit;
+    font-weight:800;
+    font-size:16px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--bg-void);
+    background:var(--accent-cyan);
+    clip-path:polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+    transition:transform .12s ease, filter .12s ease;
+  }
+  .hex-btn:hover{filter:brightness(1.15);transform:translateY(-2px);}
+  .hex-btn:active{transform:translateY(0px) scale(0.98);}
+  .hex-btn.secondary{background:transparent;color:var(--text-primary);
+    box-shadow:inset 0 0 0 2px var(--accent-magenta);
+    clip-path:polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);}
+  .hex-btn:disabled{opacity:0.35;cursor:not-allowed;filter:none;transform:none;}
+
+  #ui-layer{position:fixed;inset:0;z-index:10;pointer-events:none;}
+  .screen{
+    position:absolute;inset:0;display:none;
+    flex-direction:column;align-items:center;justify-content:center;
+    gap:28px;pointer-events:auto;
+    background:radial-gradient(ellipse at center, rgba(23,18,38,0.55) 0%, rgba(11,7,20,0.92) 70%);
+  }
+  .screen.active{display:flex;}
+
+  .eyebrow{
+    font-size:12px;letter-spacing:6px;text-transform:uppercase;
+    color:var(--accent-cyan);font-weight:700;
+  }
+  h1.title{
+    font-size:clamp(38px,7vw,72px);
+    margin:0;font-weight:900;letter-spacing:4px;text-transform:uppercase;
+    background:linear-gradient(90deg,var(--accent-magenta),var(--accent-cyan));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    transform:skewX(-4deg);
+    text-align:center;
+  }
+  p.sub{color:var(--text-dim);font-size:15px;max-width:520px;text-align:center;line-height:1.6;margin:0;}
+
+  .btn-col{display:flex;flex-direction:column;gap:16px;align-items:stretch;width:280px;}
+
+  .level-grid{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;max-width:760px;}
+  .level-card{
+    width:200px;padding:22px 18px;
+    background:var(--bg-panel);
+    clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);
+    border:1px solid rgba(255,255,255,0.06);
+    cursor:pointer;transition:transform .15s ease, box-shadow .15s ease;
+    text-align:left;
+  }
+  .level-card:hover{transform:translateY(-4px);box-shadow:0 0 0 2px var(--card-color,var(--accent-cyan));}
+  .level-card .lv-num{font-size:11px;letter-spacing:3px;color:var(--card-color,var(--accent-cyan));font-weight:800;}
+  .level-card h3{margin:6px 0 4px;font-size:20px;letter-spacing:1px;}
+  .level-card .lv-meta{font-size:12px;color:var(--text-dim);}
+
+  #hud{position:absolute;inset:0;display:none;pointer-events:none;}
+  #hud.active{display:block;}
+  .hud-top{
+    position:absolute;top:26px;left:0;right:0;
+    display:flex;justify-content:center;gap:60px;
+  }
+  .hud-stat{text-align:center;}
+  .hud-stat .val{font-family:"Courier New",monospace;font-size:34px;font-weight:900;color:var(--accent-gold);text-shadow:0 0 12px rgba(255,201,74,0.6);}
+  .hud-stat .lbl{font-size:11px;letter-spacing:3px;color:var(--text-dim);}
+  #judgment{
+    position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
+    font-size:30px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+    opacity:0;transition:opacity .1s ease, transform .25s ease;
+  }
+  #judgment.show{opacity:1;transform:translate(-50%,-60%);}
+  .lane-hints{
+    position:absolute;bottom:40px;left:0;right:0;
+    display:flex;justify-content:center;gap:40px;
+  }
+  .lane-key{
+    width:64px;height:64px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:20px;
+    border:2px solid var(--k-color);color:var(--k-color);
+    background:rgba(255,255,255,0.03);
+    pointer-events:auto;cursor:pointer;user-select:none;
+    transition:transform .08s ease, background .08s ease;
+  }
+  .lane-key:active{transform:scale(0.88);background:rgba(255,255,255,0.12);}
+  #vr-status{
+    position:absolute;top:26px;right:26px;font-size:11px;letter-spacing:2px;
+    color:var(--text-dim);text-align:right;pointer-events:none;
+  }
+  #exit-btn{position:absolute;top:24px;left:26px;pointer-events:auto;}
+  #exit-btn button{
+    background:transparent;border:1px solid var(--text-dim);color:var(--text-dim);
+    padding:8px 16px;font-size:11px;letter-spacing:2px;text-transform:uppercase;
+    cursor:pointer;
+  }
+
+  .results-score{font-family:"Courier New",monospace;font-size:64px;font-weight:900;color:var(--accent-gold);text-shadow:0 0 20px rgba(255,201,74,0.5);}
+  .grade{font-size:20px;letter-spacing:6px;color:var(--accent-cyan);font-weight:800;}
+  .results-breakdown{display:flex;gap:32px;color:var(--text-dim);font-size:13px;letter-spacing:1px;}
+  .results-breakdown b{color:var(--text-primary);font-size:18px;display:block;font-family:"Courier New",monospace;}
+
+  .note{font-size:11px;color:var(--text-dim);letter-spacing:1px;text-align:center;max-width:480px;}
+</style>
+</head>
+<body>
+
+<div id="scene-container"></div>
+
+<div id="ui-layer">
+
+  <!-- TITLE SCREEN -->
+  <div class="screen active" id="screen-title">
+    <div class="eyebrow">Meta Quest 3s · WebXR</div>
+    <h1 class="title">Pulsegrid</h1>
+    <p class="sub">Łap nutki dokładnie w rytmie, dociskając spust kontrolera gdy dotrą do świetlistego pierścienia. Lewa i prawa dłoń — osobne ścieżki.</p>
+    <div class="btn-col">
+      <button class="hex-btn" id="btn-to-levels">Rozpocznij</button>
+      <button class="hex-btn secondary" id="btn-to-settings">Ustawienia</button>
+    </div>
+    <div id="support-note" class="note">Sprawdzanie dostępności WebXR…</div>
+  </div>
+
+  <!-- LEVEL SELECT -->
+  <div class="screen" id="screen-levels">
+    <div class="eyebrow">Wybierz poziom</div>
+    <h1 class="title" style="font-size:36px;">Playlista</h1>
+    <div class="level-grid" id="level-grid"></div>
+    <button class="hex-btn secondary" id="btn-levels-back">Wstecz</button>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="screen" id="screen-settings">
+    <div class="eyebrow">Ustawienia</div>
+    <h1 class="title" style="font-size:36px;">Konfiguracja</h1>
+    <div class="btn-col" style="width:340px;">
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:13px;letter-spacing:1px;color:var(--text-dim);">
+        Głośność muzyki
+        <input type="range" id="volume-slider" min="0" max="100" value="70" style="width:160px;">
+      </label>
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:13px;letter-spacing:1px;color:var(--text-dim);">
+        Opóźnienie audio (ms)
+        <input type="range" id="offset-slider" min="-150" max="150" value="0" style="width:160px;">
+      </label>
+    </div>
+    <button class="hex-btn secondary" id="btn-settings-back">Wstecz</button>
+  </div>
+
+  <!-- PRE-GAME / ENTER VR -->
+  <div class="screen" id="screen-prevr">
+    <div class="eyebrow" id="prevr-level-name">Poziom</div>
+    <h1 class="title" style="font-size:34px;" id="prevr-title">Gotowy?</h1>
+    <p class="sub" id="prevr-desc"></p>
+    <div class="btn-col">
+      <button class="hex-btn" id="btn-enter-vr">Wejdź w VR</button>
+      <button class="hex-btn secondary" id="btn-desktop-mode">Tryb biurkowy (podgląd)</button>
+      <button class="hex-btn secondary" id="btn-prevr-back">Wstecz</button>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="screen" id="screen-results">
+    <div class="eyebrow">Koniec utworu</div>
+    <div class="results-score" id="res-score">0</div>
+    <div class="grade" id="res-grade">C</div>
+    <div class="results-breakdown">
+      <div>Perfect<b id="res-perfect">0</b></div>
+      <div>Good<b id="res-good">0</b></div>
+      <div>Miss<b id="res-miss">0</b></div>
+      <div>Max combo<b id="res-combo">0</b></div>
+    </div>
+    <div class="btn-col">
+      <button class="hex-btn" id="btn-retry">Zagraj ponownie</button>
+      <button class="hex-btn secondary" id="btn-results-menu">Menu główne</button>
+    </div>
+  </div>
+
+  <!-- HUD (during gameplay) -->
+  <div id="hud">
+    <div id="vr-status">TRYB BIURKOWY</div>
+    <div id="exit-btn"><button id="btn-exit-play">✕ Zakończ</button></div>
+    <div class="hud-top">
+      <div class="hud-stat"><div class="val" id="hud-score">0</div><div class="lbl">Wynik</div></div>
+      <div class="hud-stat"><div class="val" id="hud-combo">0</div><div class="lbl">Combo</div></div>
+    </div>
+    <div id="judgment">Perfect</div>
+    <div class="lane-hints">
+      <div class="lane-key" id="key-left" style="--k-color:var(--accent-cyan);">F</div>
+      <div class="lane-key" id="key-right" style="--k-color:var(--accent-magenta);">J</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================= LEVEL DATA ============================= */
+// pattern: array of beat entries, one per beat. 0=nic, 1=lewa, 2=prawa, 3=obie
+function buildPattern(str){
+  // string of chars: '.'=nic 'L'=lewa 'R'=prawa 'B'=obie
+  const map = {'.':0,'L':1,'R':2,'B':3};
+  return str.split('').map(c=>map[c] ?? 0);
+}
+
+const LEVELS = [
+  {
+    id:'neon-pulse', name:'Neon Pulse', color:'#29F1D6', bpm:100,
+    desc:'Prosty, równy rytm — idealny na rozgrzewkę.',
+    pattern: buildPattern('L.R.L.R.L.R.L.R.LLR.LLR.L.R.B...')
+  },
+  {
+    id:'glass-drift', name:'Glass Drift', color:'#FF3D8A', bpm:118,
+    desc:'Synkopowany groove z krótkimi przerwami.',
+    pattern: buildPattern('L.RL..RL.R.L..RLBL.R..LR.L.RB..')
+  },
+  {
+    id:'hyperlane', name:'Hyperlane', color:'#FFC94A', bpm:136,
+    desc:'Szybko i gęsto — dla wprawnej ręki.',
+    pattern: buildPattern('LRLRLRLRLBLRLRLRBLRLRLRLBLRLRLB')
+  }
+];
+
+/* ============================= STATE ============================= */
+const state = {
+  screen:'title',
+  xrSupported:false,
+  volume:0.7,
+  audioOffset:0, // ms
+  currentLevel:null,
+  desktopMode:false,
+  session:null,
+};
+
+/* ============================= UI WIRING ============================= */
+const $ = (id)=>document.getElementById(id);
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if(el) el.classList.add('active');
+  state.screen = id;
+}
+
+function renderLevelGrid(){
+  const grid = $('level-grid');
+  grid.innerHTML = '';
+  LEVELS.forEach((lv,i)=>{
+    const card = document.createElement('div');
+    card.className = 'level-card';
+    card.style.setProperty('--card-color', lv.color);
+    card.innerHTML = `<div class="lv-num">0${i+1}</div><h3>${lv.name}</h3><div class="lv-meta">${lv.bpm} BPM</div>`;
+    card.addEventListener('click', ()=>selectLevel(lv));
+    grid.appendChild(card);
+  });
+}
+
+function selectLevel(lv){
+  state.currentLevel = lv;
+  $('prevr-level-name').textContent = lv.name;
+  $('prevr-title').textContent = `${lv.bpm} BPM`;
+  $('prevr-desc').textContent = lv.desc;
+  showScreen('screen-prevr');
+}
+
+$('btn-to-levels').addEventListener('click', ()=>showScreen('screen-levels'));
+$('btn-to-settings').addEventListener('click', ()=>showScreen('screen-settings'));
+$('btn-levels-back').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-settings-back').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-prevr-back').addEventListener('click', ()=>showScreen('screen-levels'));
+$('btn-results-menu').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-retry').addEventListener('click', ()=>selectLevel(state.currentLevel));
+
+$('volume-slider').addEventListener('input', e=>{ state.volume = e.target.value/100; });
+$('offset-slider').addEventListener('input', e=>{ state.audioOffset = parseInt(e.target.value,10); });
+
+$('btn-desktop-mode').addEventListener('click', ()=>startGame(false));
+$('btn-enter-vr').addEventListener('click', ()=>startGame(true));
+$('btn-exit-play').addEventListener('click', ()=>endGame(true));
+
+renderLevelGrid();
+
+/* Check WebXR support on load */
+if(navigator.xr && navigator.xr.isSessionSupported){
+  navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
+    state.xrSupported = ok;
+    $('support-note').textContent = ok
+      ? 'WebXR wykryty — możesz grać w pełnym VR na Quest 3s.'
+      : 'WebXR niedostępny w tej przeglądarce — dostępny tryb biurkowy (podgląd 3D). Otwórz tę stronę w przeglądarce Meta Quest, by grać w VR.';
+    $('btn-enter-vr').disabled = !ok;
+  }).catch(()=>{
+    $('support-note').textContent = 'Nie udało się sprawdzić WebXR — dostępny tryb biurkowy.';
+    $('btn-enter-vr').disabled = true;
+  });
+} else {
+  $('support-note').textContent = 'Ta przeglądarka nie obsługuje WebXR — dostępny tryb biurkowy (podgląd 3D).';
+  $('btn-enter-vr').disabled = true;
+}
+
+/* ============================= THREE.JS SCENE ============================= */
+const container = $('scene-container') || document.getElementById('scene-container');
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.getElementById('scene-container').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0B0714);
+scene.fog = new THREE.Fog(0x0B0714, 6, 22);
+
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.05, 60);
+camera.position.set(0,1.6,3.2);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Grid floor
+const grid1 = new THREE.GridHelper(30, 30, 0x29F1D6, 0x231B3A);
+grid1.position.y = 0;
+scene.add(grid1);
+const grid2 = new THREE.GridHelper(30, 6, 0xFF3D8A, 0x000000);
+grid2.material.transparent = true;
+grid2.material.opacity = 0.25;
+scene.add(grid2);
+
+// Ambient neon lights (basic materials are self-lit, but a touch of light helps rim)
+scene.add(new THREE.AmbientLight(0x8866ff, 0.6));
+const pl = new THREE.PointLight(0xff3d8a, 1.2, 20);
+pl.position.set(0,3,1);
+scene.add(pl);
+
+// Hit ring (hexagonal wireframe torus-like)
+function makeHexRing(radius, color){
+  const shape = [];
+  for(let i=0;i<=6;i++){
+    const a = (i/6)*Math.PI*2;
+    shape.push(new THREE.Vector3(Math.cos(a)*radius, Math.sin(a)*radius, 0));
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(shape);
+  const mat = new THREE.LineBasicMaterial({color, linewidth:2});
+  return new THREE.Line(geo, mat);
+}
+const ringGroup = new THREE.Group();
+const ringOuter = makeHexRing(0.55, 0x29F1D6);
+const ringInner = makeHexRing(0.4, 0xFF3D8A);
+ringGroup.add(ringOuter, ringInner);
+ringGroup.position.set(0, 1.5, -1.4);
+scene.add(ringGroup);
+
+// Lane guide rails (left = cyan, right = magenta) leading to the ring
+function makeRail(color, xOffset){
+  const points = [new THREE.Vector3(xOffset*3.2, 1.5, -8), new THREE.Vector3(xOffset*0.55, 1.5, -1.4)];
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({color, transparent:true, opacity:0.35});
+  return new THREE.Line(geo, mat);
+}
+scene.add(makeRail(0x29F1D6, -1));
+scene.add(makeRail(0xFF3D8A, 1));
+
+/* ============================= CONTROLLERS ============================= */
+const controllers = [null, null]; // 0 = tracked, indices matched via handedness
+const controllerHandedness = new Map();
+
+function makeControllerMesh(color){
+  const geo = new THREE.ConeGeometry(0.03, 0.12, 12);
+  geo.rotateX(Math.PI/2);
+  const mat = new THREE.MeshBasicMaterial({color});
+  return new THREE.Mesh(geo, mat);
+}
+
+for(let i=0;i<2;i++){
+  const controller = renderer.xr.getController(i);
+  controller.addEventListener('connected', function(evt){
+    const hand = evt.data && evt.data.handedness ? evt.data.handedness : (i===0?'left':'right');
+    controllerHandedness.set(controller, hand);
+    const mesh = makeControllerMesh(hand==='left' ? 0x29F1D6 : 0xFF3D8A);
+    controller.add(mesh);
+  });
+  controller.addEventListener('disconnected', function(){
+    controllerHandedness.delete(controller);
+  });
+  controller.addEventListener('selectstart', function(){
+    const hand = controllerHandedness.get(controller) || 'right';
+    handleHit(hand === 'left' ? 'L' : 'R');
+  });
+  scene.add(controller);
+  controllers[i] = controller;
+}
+
+/* ============================= AUDIO (synth, no external files) ============================= */
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playKick(time, accent){
+  const ctx = ensureAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(accent ? 160 : 120, time);
+  osc.frequency.exponentialRampToValueAtTime(40, time+0.12);
+  gain.gain.setValueAtTime(state.volume*(accent?0.9:0.6), time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.18);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(time);
+  osc.stop(time+0.2);
+}
+function playHat(time){
+  const ctx = ensureAudio();
+  const bufferSize = ctx.sampleRate*0.03;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1)*(1-i/bufferSize);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(state.volume*0.25, time);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'highpass'; filter.frequency.value = 6000;
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start(time);
+}
+
+/* ============================= GAMEPLAY LOGIC ============================= */
+let notes = []; // {beatIndex,lane,targetTime,spawnTime,mesh,resolved}
+let score=0, combo=0, maxCombo=0, perfectCount=0, goodCount=0, missCount=0;
+let songStartTime = 0;
+let beatDur = 0.5;
+let travelTime = 1.7;
+let running = false;
+let scheduleIndex = 0;
+
+const HIT_PERFECT = 0.09;
+const HIT_GOOD = 0.22;
+
+function clearNotes(){
+  notes.forEach(n=>{ if(n.mesh) scene.remove(n.mesh); });
+  notes = [];
+}
+
+function spawnNoteMesh(lane){
+  const color = lane==='L' ? 0x29F1D6 : (lane==='R' ? 0xFF3D8A : 0xFFC94A);
+  const geo = new THREE.IcosahedronGeometry(0.14, 0);
+  const mat = new THREE.MeshBasicMaterial({color, wireframe:false});
+  const mesh = new THREE.Mesh(geo, mat);
+  const xOff = lane==='L' ? -1 : (lane==='R' ? 1 : 0);
+  mesh.position.set(xOff*3.2, 1.5, -8);
+  scene.add(mesh);
+  return mesh;
+}
+
+function startGame(useVR){
+  const lv = state.currentLevel;
+  beatDur = 60/lv.bpm;
+  travelTime = Math.max(1.1, beatDur*3.2);
+  ensureAudio();
+
+  showScreen(null);
+  $('hud').classList.add('active');
+  $('vr-status').textContent = useVR ? 'VR AKTYWNE' : 'TRYB BIURKOWY';
+  score=0; combo=0; maxCombo=0; perfectCount=0; goodCount=0; missCount=0;
+  updateHud();
+  clearNotes();
+  scheduleIndex = 0;
+  running = true;
+
+  const ctx = ensureAudio();
+  songStartTime = ctx.currentTime + 1.2;
+
+  // Schedule all beats/notes up front (song is short)
+  lv.pattern.forEach((val, i)=>{
+    const targetTime = songStartTime + i*beatDur;
+    playHat(targetTime);
+    if(val !== 0){
+      playKick(targetTime, val===3);
+      const lanesToSpawn = val===3 ? ['L','R'] : [val===1?'L':'R'];
+      lanesToSpawn.forEach(lane=>{
+        notes.push({
+          beatIndex:i, lane, targetTime,
+          spawnTime: targetTime - travelTime,
+          mesh: null, resolved:false, missed:false
+        });
+      });
+    }
+  });
+  const songEndTime = songStartTime + lv.pattern.length*beatDur + travelTime + 0.6;
+  state.songEndTime = songEndTime;
+
+  if(useVR){
+    navigator.xr.requestSession('immersive-vr', {optionalFeatures:['local-floor','bounded-floor']})
+      .then(session=>{
+        state.session = session;
+        renderer.xr.setSession(session);
+        session.addEventListener('end', onXRSessionEnd);
+      })
+      .catch(err=>{
+        console.warn('VR session failed, falling back to desktop mode', err);
+        state.desktopMode = true;
+      });
+  } else {
+    state.desktopMode = true;
+  }
+}
+
+function onXRSessionEnd(){
+  state.session = null;
+  if(running) endGame(false);
+}
+
+function endGame(userQuit){
+  running = false;
+  clearNotes();
+  $('hud').classList.remove('active');
+  if(state.session){
+    try{ state.session.end(); }catch(e){}
+    state.session = null;
+  }
+  state.desktopMode = false;
+  if(userQuit){
+    showScreen('screen-title');
+    return;
+  }
+  const total = perfectCount+goodCount+missCount;
+  const accuracy = total>0 ? (perfectCount + goodCount*0.5)/total : 0;
+  let grade = 'C';
+  if(accuracy > 0.95) grade = 'S';
+  else if(accuracy > 0.85) grade = 'A';
+  else if(accuracy > 0.65) grade = 'B';
+  $('res-score').textContent = score;
+  $('res-grade').textContent = grade;
+  $('res-perfect').textContent = perfectCount;
+  $('res-good').textContent = goodCount;
+  $('res-miss').textContent = missCount;
+  $('res-combo').textContent = maxCombo;
+  showScreen('screen-results');
+}
+
+function updateHud(){
+  $('hud-score').textContent = score;
+  $('hud-combo').textContent = combo;
+}
+
+function showJudgment(text, color){
+  const el = $('judgment');
+  el.textContent = text;
+  el.style.color = color;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+}
+
+function handleHit(lane){
+  if(!running) return;
+  const ctx = ensureAudio();
+  const now = ctx.currentTime - (state.audioOffset/1000);
+  // find closest unresolved note on this lane (or 'B'-spawned as L/R already split)
+  let best = null, bestDiff = Infinity;
+  notes.forEach(n=>{
+    if(n.resolved || n.lane !== lane) return;
+    const diff = Math.abs(n.targetTime - now);
+    if(diff < bestDiff){ bestDiff = diff; best = n; }
+  });
+  if(best && bestDiff <= HIT_GOOD){
+    best.resolved = true;
+    if(best.mesh){ scene.remove(best.mesh); best.mesh = null; }
+    if(bestDiff <= HIT_PERFECT){
+      perfectCount++; combo++; score += 100 + Math.min(combo,50)*2;
+      showJudgment('Perfect', '#29F1D6');
+    } else {
+      goodCount++; combo++; score += 50 + Math.min(combo,50);
+      showJudgment('Good', '#FFC94A');
+    }
+    maxCombo = Math.max(maxCombo, combo);
+    updateHud();
+  } else {
+    // whiff - breaks combo lightly, no note consumed
+    combo = 0;
+    updateHud();
+  }
+}
+
+// Desktop fallback input
+window.addEventListener('keydown', (e)=>{
+  if(!running) return;
+  if(e.key.toLowerCase()==='f') handleHit('L');
+  if(e.key.toLowerCase()==='j') handleHit('R');
+});
+$('key-left').addEventListener('pointerdown', ()=>handleHit('L'));
+$('key-right').addEventListener('pointerdown', ()=>handleHit('R'));
+
+/* ============================= RENDER LOOP ============================= */
+function tick(){
+  if(running){
+    const ctx = ensureAudio();
+    const now = ctx.currentTime - (state.audioOffset/1000);
+
+    notes.forEach(n=>{
+      if(n.resolved) return;
+      if(now >= n.spawnTime && !n.mesh){
+        n.mesh = spawnNoteMesh(n.lane);
+      }
+      if(n.mesh){
+        const progress = (now - n.spawnTime) / travelTime;
+        const xOff = n.lane==='L' ? -1 : 1;
+        const startX = xOff*3.2, endX = xOff*0.55;
+        n.mesh.position.x = startX + (endX-startX)*Math.min(progress,1.3);
+        n.mesh.position.z = -8 + (-1.4 - -8)*Math.min(progress,1.3);
+        n.mesh.rotation.x += 0.05;
+        n.mesh.rotation.y += 0.05;
+      }
+      if(!n.resolved && now > n.targetTime + HIT_GOOD && !n.missed){
+        n.missed = true; n.resolved = true;
+        missCount++; combo = 0;
+        showJudgment('Miss', '#8A7FA8');
+        if(n.mesh){ scene.remove(n.mesh); n.mesh = null; }
+        updateHud();
+      }
+    });
+
+    // pulse the ring on each beat
+    const beatPhase = ((now - songStartTime) / beatDur) % 1;
+    const pulse = 1 + (beatPhase < 0.15 ? (0.15-beatPhase)/0.15*0.25 : 0);
+    ringGroup.scale.set(pulse,pulse,1);
+
+    if(state.songEndTime && now > state.songEndTime){
+      endGame(false);
+    }
+  }
+}
+
+renderer.setAnimationLoop(()=>{
+  tick();
+  renderer.render(scene, camera);
+});
+
+})();
+</script>
+</body>
+</html>
