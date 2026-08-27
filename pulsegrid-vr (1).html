@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PULSEGRID — VR Rhythm Arcade</title>
+<style>
+  :root{
+    --bg-void:#0B0714;
+    --bg-panel:#171226;
+    --bg-panel-2:#1F1832;
+    --accent-magenta:#FF3D8A;
+    --accent-cyan:#29F1D6;
+    --accent-gold:#FFC94A;
+    --text-primary:#F4F0FF;
+    --text-dim:#8A7FA8;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--bg-void);
+    font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+    color:var(--text-primary);
+  }
+  #scene-container{position:fixed;inset:0;z-index:0;}
+  #scene-container canvas{display:block;}
+
+  .hex-btn{
+    position:relative;border:none;cursor:pointer;padding:18px 40px;
+    font-family:inherit;font-weight:800;font-size:16px;letter-spacing:2px;
+    text-transform:uppercase;color:var(--bg-void);background:var(--accent-cyan);
+    clip-path:polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+    transition:transform .12s ease, filter .12s ease;
+  }
+  .hex-btn:hover{filter:brightness(1.15);transform:translateY(-2px);}
+  .hex-btn:active{transform:translateY(0px) scale(0.98);}
+  .hex-btn.secondary{background:transparent;color:var(--text-primary);
+    box-shadow:inset 0 0 0 2px var(--accent-magenta);
+    clip-path:polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);}
+  .hex-btn:disabled{opacity:0.35;cursor:not-allowed;filter:none;transform:none;}
+
+  #ui-layer{position:fixed;inset:0;z-index:10;pointer-events:none;}
+  .screen{
+    position:absolute;inset:0;display:none;
+    flex-direction:column;align-items:center;justify-content:center;
+    gap:26px;pointer-events:auto;overflow-y:auto;padding:30px 16px;
+    background:radial-gradient(ellipse at center, rgba(23,18,38,0.55) 0%, rgba(11,7,20,0.92) 70%);
+  }
+  .screen.active{display:flex;}
+
+  .eyebrow{font-size:12px;letter-spacing:6px;text-transform:uppercase;color:var(--accent-cyan);font-weight:700;}
+  h1.title{
+    font-size:clamp(34px,6.5vw,66px);margin:0;font-weight:900;letter-spacing:4px;
+    text-transform:uppercase;background:linear-gradient(90deg,var(--accent-magenta),var(--accent-cyan));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    transform:skewX(-4deg);text-align:center;
+  }
+  @keyframes flashHue{
+    0%{filter:hue-rotate(0deg) brightness(1);}
+    50%{filter:hue-rotate(60deg) brightness(1.3);}
+    100%{filter:hue-rotate(0deg) brightness(1);}
+  }
+  .flash-title{animation:flashHue 1.1s ease-in-out infinite;}
+  p.sub{color:var(--text-dim);font-size:15px;max-width:540px;text-align:center;line-height:1.6;margin:0;}
+  .btn-col{display:flex;flex-direction:column;gap:16px;align-items:stretch;width:280px;}
+
+  .level-grid{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;max-width:760px;}
+  .level-card{
+    width:200px;padding:22px 18px;background:var(--bg-panel);
+    clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);
+    border:1px solid rgba(255,255,255,0.06);cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease;text-align:left;
+  }
+  .level-card:hover{transform:translateY(-4px);box-shadow:0 0 0 2px var(--card-color,var(--accent-cyan));}
+  .level-card .lv-num{font-size:11px;letter-spacing:3px;color:var(--card-color,var(--accent-cyan));font-weight:800;}
+  .level-card h3{margin:6px 0 4px;font-size:20px;letter-spacing:1px;}
+  .level-card .lv-meta{font-size:12px;color:var(--text-dim);}
+
+  .mode-grid{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;max-width:760px;}
+  .mode-card{
+    width:280px;padding:30px 22px;background:var(--bg-panel);cursor:pointer;text-align:left;
+    clip-path:polygon(20px 0,100% 0,100% calc(100% - 20px),calc(100% - 20px) 100%,0 100%,0 20px);
+    border:1px solid rgba(255,255,255,0.08);transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .mode-card:hover{transform:translateY(-5px) scale(1.02);box-shadow:0 0 0 2px var(--card-color);}
+  .mode-card .mode-icon{font-size:34px;}
+  .mode-card h3{margin:10px 0 6px;font-size:22px;letter-spacing:1px;color:var(--card-color);}
+  .mode-card p{margin:0;font-size:13px;color:var(--text-dim);line-height:1.5;}
+
+  .howto-list{display:flex;flex-direction:column;gap:14px;max-width:560px;width:100%;}
+  .howto-step{
+    display:flex;gap:16px;align-items:flex-start;background:var(--bg-panel);
+    padding:16px 18px;border-left:3px solid var(--accent-cyan);
+  }
+  .howto-step .num{font-family:"Courier New",monospace;font-weight:900;font-size:20px;color:var(--accent-cyan);min-width:28px;}
+  .howto-step .txt b{display:block;font-size:14px;letter-spacing:1px;margin-bottom:3px;}
+  .howto-step .txt span{font-size:13px;color:var(--text-dim);line-height:1.5;}
+
+  #hud{position:absolute;inset:0;display:none;pointer-events:none;}
+  #hud.active{display:block;}
+  .hud-top{position:absolute;top:26px;left:0;right:0;display:flex;justify-content:center;gap:60px;}
+  .hud-stat{text-align:center;}
+  .hud-stat .val{font-family:"Courier New",monospace;font-size:34px;font-weight:900;color:var(--accent-gold);text-shadow:0 0 12px rgba(255,201,74,0.6);}
+  .hud-stat .lbl{font-size:11px;letter-spacing:3px;color:var(--text-dim);}
+  #judgment{
+    position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
+    font-size:30px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+    opacity:0;transition:opacity .1s ease, transform .25s ease;
+  }
+  #judgment.show{opacity:1;transform:translate(-50%,-60%);}
+
+  .lane-hints{position:absolute;bottom:40px;left:0;right:0;display:flex;justify-content:center;gap:40px;}
+  .lane-key{
+    width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:18px;border:2px solid var(--k-color);color:var(--k-color);
+    background:rgba(255,255,255,0.03);pointer-events:auto;cursor:pointer;user-select:none;
+    transition:transform .08s ease, background .08s ease;flex-direction:column;line-height:1.1;
+  }
+  .lane-key small{font-size:9px;letter-spacing:1px;color:var(--text-dim);}
+  .lane-key:active{transform:scale(0.88);background:rgba(255,255,255,0.12);}
+
+  .dance-pad{
+    position:absolute;bottom:34px;left:50%;transform:translate(-50%,0);
+    width:190px;height:190px;pointer-events:auto;
+  }
+  .dance-pad button{
+    position:absolute;width:58px;height:58px;border-radius:14px;
+    border:2px solid var(--k-color);color:var(--k-color);background:rgba(255,255,255,0.03);
+    font-weight:900;font-size:20px;cursor:pointer;transition:transform .08s ease, background .08s ease;
+  }
+  .dance-pad button:active{transform:scale(0.88);background:rgba(255,255,255,0.15);}
+  .dance-pad .pad-up{top:0;left:66px;--k-color:var(--accent-gold);}
+  .dance-pad .pad-down{bottom:0;left:66px;--k-color:var(--accent-cyan);}
+  .dance-pad .pad-left{top:66px;left:0;--k-color:var(--accent-cyan);}
+  .dance-pad .pad-right{top:66px;right:0;--k-color:var(--accent-magenta);}
+
+  #vr-status{position:absolute;top:26px;right:26px;font-size:11px;letter-spacing:2px;color:var(--text-dim);text-align:right;pointer-events:none;}
+  #exit-btn{position:absolute;top:24px;left:26px;pointer-events:auto;}
+  #exit-btn button{background:transparent;border:1px solid var(--text-dim);color:var(--text-dim);padding:8px 16px;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;}
+
+  .results-score{font-family:"Courier New",monospace;font-size:64px;font-weight:900;color:var(--accent-gold);text-shadow:0 0 20px rgba(255,201,74,0.5);}
+  .grade{font-size:20px;letter-spacing:6px;color:var(--accent-cyan);font-weight:800;}
+  .results-breakdown{display:flex;gap:32px;color:var(--text-dim);font-size:13px;letter-spacing:1px;flex-wrap:wrap;justify-content:center;}
+  .results-breakdown b{color:var(--text-primary);font-size:18px;display:block;font-family:"Courier New",monospace;}
+  .note{font-size:11px;color:var(--text-dim);letter-spacing:1px;text-align:center;max-width:480px;}
+</style>
+</head>
+<body>
+
+<div id="scene-container"></div>
+
+<div id="ui-layer">
+
+  <!-- TITLE SCREEN -->
+  <div class="screen active" id="screen-title">
+    <div class="eyebrow">Meta Quest 3s · WebXR</div>
+    <h1 class="title">Pulsegrid</h1>
+    <p class="sub">Łap nutki w rytmie, poruszając kontrolerami VR. Dwa tryby gry: precyzyjny Classic Ring i ruchowy Dance Dance Dance!!!!</p>
+    <div class="btn-col">
+      <button class="hex-btn" id="btn-to-modes">Rozpocznij</button>
+      <button class="hex-btn secondary" id="btn-to-howto">Jak grać?</button>
+      <button class="hex-btn secondary" id="btn-to-settings">Ustawienia</button>
+    </div>
+    <div id="support-note" class="note">Sprawdzanie dostępności WebXR…</div>
+  </div>
+
+  <!-- HOW TO PLAY -->
+  <div class="screen" id="screen-howto">
+    <div class="eyebrow">Instrukcja</div>
+    <h1 class="title" style="font-size:34px;">Jak grać</h1>
+    <div class="howto-list">
+      <div class="howto-step"><div class="num">01</div><div class="txt"><b>Załóż gogle i wejdź w VR</b><span>Wybierz poziom, potem naciśnij „Wejdź w VR”. Zobaczysz dwie świecące bryłki — to Twoje kontrolery (cyan = lewy, magenta = prawy).</span></div></div>
+      <div class="howto-step"><div class="num">02</div><div class="txt"><b>Tryb Classic Ring</b><span>Kulki lecą z boków w stronę sześciokątnego pierścienia przed Tobą. Gdy kulka dotrze do pierścienia — ściśnij spust (trigger) na kontrolerze po tej samej stronie, z której kulka nadleciała.</span></div></div>
+      <div class="howto-step"><div class="num">03</div><div class="txt"><b>Tryb Dance Dance Dance!!!!</b><span>Wokół Ciebie pojawią się 4 świecące strefy: góra, dół, lewo, prawo. Gdy strefa rozbłyśnie mocniej — sięgnij w jej stronę ręką z kontrolerem. Liczy się ruch całej ręki, nie przycisk!</span></div></div>
+      <div class="howto-step"><div class="num">04</div><div class="txt"><b>Podpowiedzi w goglach</b><span>W trakcie gry na dole widoku zobaczysz mały panel z wynikiem, comba i przypomnieniem sterowania — nie musisz nic pamiętać na pamięć.</span></div></div>
+      <div class="howto-step"><div class="num">05</div><div class="txt"><b>Bez gogli?</b><span>Na komputerze zagrasz w trybie biurkowym: Classic — klawisze F (lewo) / J (prawo). Dance — strzałki ↑ ↓ ← → lub przyciski na ekranie.</span></div></div>
+    </div>
+    <button class="hex-btn secondary" id="btn-howto-back">Wstecz</button>
+  </div>
+
+  <!-- MODE SELECT -->
+  <div class="screen" id="screen-modes">
+    <div class="eyebrow">Krok 1 z 2</div>
+    <h1 class="title" style="font-size:36px;">Wybierz tryb</h1>
+    <div class="mode-grid">
+      <div class="mode-card" style="--card-color:#29F1D6;" id="mode-classic">
+        <div class="mode-icon">🎯</div>
+        <h3>Classic Ring</h3>
+        <p>Ściskaj spust kontrolera dokładnie w rytm, gdy nuta dotrze do pierścienia. Precyzja i timing.</p>
+      </div>
+      <div class="mode-card" style="--card-color:#FF3D8A;" id="mode-dance">
+        <div class="mode-icon">💃</div>
+        <h3 class="flash-title">Dance Dance Dance!!!!</h3>
+        <p>Sięgaj rękami do świecących stref wokół siebie — góra, dół, lewo, prawo. Cały ruch ciała w rytmie!</p>
+      </div>
+    </div>
+    <button class="hex-btn secondary" id="btn-modes-back">Wstecz</button>
+  </div>
+
+  <!-- LEVEL SELECT -->
+  <div class="screen" id="screen-levels">
+    <div class="eyebrow" id="levels-eyebrow">Krok 2 z 2</div>
+    <h1 class="title" style="font-size:36px;">Playlista</h1>
+    <div class="level-grid" id="level-grid"></div>
+    <button class="hex-btn secondary" id="btn-levels-back">Wstecz</button>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="screen" id="screen-settings">
+    <div class="eyebrow">Ustawienia</div>
+    <h1 class="title" style="font-size:36px;">Konfiguracja</h1>
+    <div class="btn-col" style="width:340px;">
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:13px;letter-spacing:1px;color:var(--text-dim);">
+        Głośność muzyki
+        <input type="range" id="volume-slider" min="0" max="100" value="70" style="width:160px;">
+      </label>
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:13px;letter-spacing:1px;color:var(--text-dim);">
+        Opóźnienie audio (ms)
+        <input type="range" id="offset-slider" min="-150" max="150" value="0" style="width:160px;">
+      </label>
+    </div>
+    <button class="hex-btn secondary" id="btn-settings-back">Wstecz</button>
+  </div>
+
+  <!-- PRE-GAME / ENTER VR -->
+  <div class="screen" id="screen-prevr">
+    <div class="eyebrow" id="prevr-level-name">Poziom</div>
+    <h1 class="title" style="font-size:34px;" id="prevr-title">Gotowy?</h1>
+    <p class="sub" id="prevr-desc"></p>
+    <p class="sub" id="prevr-controls" style="color:var(--accent-cyan);"></p>
+    <div class="btn-col">
+      <button class="hex-btn" id="btn-enter-vr">Wejdź w VR</button>
+      <button class="hex-btn secondary" id="btn-desktop-mode">Tryb biurkowy (podgląd)</button>
+      <button class="hex-btn secondary" id="btn-prevr-back">Wstecz</button>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="screen" id="screen-results">
+    <div class="eyebrow">Koniec utworu</div>
+    <div class="results-score" id="res-score">0</div>
+    <div class="grade" id="res-grade">C</div>
+    <div class="results-breakdown">
+      <div>Perfect<b id="res-perfect">0</b></div>
+      <div>Good<b id="res-good">0</b></div>
+      <div>Miss<b id="res-miss">0</b></div>
+      <div>Max combo<b id="res-combo">0</b></div>
+    </div>
+    <div class="btn-col">
+      <button class="hex-btn" id="btn-retry">Zagraj ponownie</button>
+      <button class="hex-btn secondary" id="btn-results-menu">Menu główne</button>
+    </div>
+  </div>
+
+  <!-- HUD (during gameplay, desktop-mode overlay) -->
+  <div id="hud">
+    <div id="vr-status">TRYB BIURKOWY</div>
+    <div id="exit-btn"><button id="btn-exit-play">✕ Zakończ</button></div>
+    <div class="hud-top">
+      <div class="hud-stat"><div class="val" id="hud-score">0</div><div class="lbl">Wynik</div></div>
+      <div class="hud-stat"><div class="val" id="hud-combo">0</div><div class="lbl">Combo</div></div>
+    </div>
+    <div id="judgment">Perfect</div>
+    <div class="lane-hints" id="lane-hints-classic">
+      <div class="lane-key" id="key-left" style="--k-color:var(--accent-cyan);">F<small>LEWY</small></div>
+      <div class="lane-key" id="key-right" style="--k-color:var(--accent-magenta);">J<small>PRAWY</small></div>
+    </div>
+    <div class="dance-pad" id="dance-pad" style="display:none;">
+      <button class="pad-up" id="pad-up">▲</button>
+      <button class="pad-down" id="pad-down">▼</button>
+      <button class="pad-left" id="pad-left">◀</button>
+      <button class="pad-right" id="pad-right">▶</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================= LEVEL DATA ============================= */
+function buildClassicPattern(str){
+  const map = {'.':0,'L':1,'R':2,'B':3};
+  return str.split('').map(c=>map[c] ?? 0);
+}
+function buildDancePattern(str){
+  return str.split('').map(c=> (['U','D','L','R'].includes(c) ? c : '.'));
+}
+
+const LEVELS = [
+  {
+    id:'neon-pulse', name:'Neon Pulse', color:'#29F1D6', bpm:100,
+    desc:'Prosty, równy rytm — idealny na rozgrzewkę.',
+    classicPattern: buildClassicPattern('L.R.L.R.L.R.L.R.LLR.LLR.L.R.B...'),
+    dancePattern: buildDancePattern('L...R...U...D...L.R.U.D.LRUD....')
+  },
+  {
+    id:'glass-drift', name:'Glass Drift', color:'#FF3D8A', bpm:118,
+    desc:'Synkopowany groove z krótkimi przerwami.',
+    classicPattern: buildClassicPattern('L.RL..RL.R.L..RLBL.R..LR.L.RB..'),
+    dancePattern: buildDancePattern('L.R..U.D.LR...UD.L..RU.D..LRUD..')
+  },
+  {
+    id:'hyperlane', name:'Hyperlane', color:'#FFC94A', bpm:136,
+    desc:'Szybko i gęsto — dla wprawnej ręki (i nogi!).',
+    classicPattern: buildClassicPattern('LRLRLRLRLBLRLRLRBLRLRLRLBLRLRLB'),
+    dancePattern: buildDancePattern('LRUDLRUD....LRUDLRUD....LRUDLRUD')
+  }
+];
+
+/* ============================= STATE ============================= */
+const state = {
+  screen:'title', xrSupported:false, volume:0.7, audioOffset:0,
+  currentLevel:null, mode:'classic', desktopMode:false, session:null,
+};
+
+/* ============================= UI WIRING ============================= */
+const $ = (id)=>document.getElementById(id);
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if(el) el.classList.add('active');
+  state.screen = id;
+}
+
+function renderLevelGrid(){
+  const grid = $('level-grid');
+  grid.innerHTML = '';
+  LEVELS.forEach((lv,i)=>{
+    const card = document.createElement('div');
+    card.className = 'level-card';
+    card.style.setProperty('--card-color', lv.color);
+    card.innerHTML = `<div class="lv-num">0${i+1}</div><h3>${lv.name}</h3><div class="lv-meta">${lv.bpm} BPM</div>`;
+    card.addEventListener('click', ()=>selectLevel(lv));
+    grid.appendChild(card);
+  });
+}
+
+function selectLevel(lv){
+  state.currentLevel = lv;
+  $('prevr-level-name').textContent = `${lv.name} · ${state.mode==='dance' ? 'Dance Dance Dance!!!!' : 'Classic Ring'}`;
+  $('prevr-title').textContent = `${lv.bpm} BPM`;
+  $('prevr-desc').textContent = lv.desc;
+  $('prevr-controls').textContent = state.mode==='dance'
+    ? 'W VR: sięgaj ręką do świecącej strefy (góra/dół/lewo/prawo). Na biurku: strzałki.'
+    : 'W VR: ściskaj spust kontrolera po stronie nadlatującej nuty. Na biurku: F / J.';
+  showScreen('screen-prevr');
+}
+
+$('btn-to-modes').addEventListener('click', ()=>showScreen('screen-modes'));
+$('btn-to-howto').addEventListener('click', ()=>showScreen('screen-howto'));
+$('btn-howto-back').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-to-settings').addEventListener('click', ()=>showScreen('screen-settings'));
+$('btn-modes-back').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-levels-back').addEventListener('click', ()=>showScreen('screen-modes'));
+$('btn-settings-back').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-prevr-back').addEventListener('click', ()=>showScreen('screen-levels'));
+$('btn-results-menu').addEventListener('click', ()=>showScreen('screen-title'));
+$('btn-retry').addEventListener('click', ()=>selectLevel(state.currentLevel));
+
+$('mode-classic').addEventListener('click', ()=>{ state.mode='classic'; $('levels-eyebrow').textContent='Classic Ring — krok 2 z 2'; showScreen('screen-levels'); });
+$('mode-dance').addEventListener('click', ()=>{ state.mode='dance'; $('levels-eyebrow').textContent='Dance Dance Dance!!!! — krok 2 z 2'; showScreen('screen-levels'); });
+
+$('volume-slider').addEventListener('input', e=>{ state.volume = e.target.value/100; });
+$('offset-slider').addEventListener('input', e=>{ state.audioOffset = parseInt(e.target.value,10); });
+
+$('btn-desktop-mode').addEventListener('click', ()=>startGame(false));
+$('btn-enter-vr').addEventListener('click', ()=>startGame(true));
+$('btn-exit-play').addEventListener('click', ()=>endGame(true));
+
+renderLevelGrid();
+
+if(navigator.xr && navigator.xr.isSessionSupported){
+  navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
+    state.xrSupported = ok;
+    $('support-note').textContent = ok
+      ? 'WebXR wykryty — możesz grać w pełnym VR na Quest 3s.'
+      : 'WebXR niedostępny w tej przeglądarce — dostępny tryb biurkowy (podgląd 3D). Otwórz tę stronę w przeglądarce Meta Quest, by grać w VR.';
+    $('btn-enter-vr').disabled = !ok;
+  }).catch(()=>{
+    $('support-note').textContent = 'Nie udało się sprawdzić WebXR — dostępny tryb biurkowy.';
+    $('btn-enter-vr').disabled = true;
+  });
+} else {
+  $('support-note').textContent = 'Ta przeglądarka nie obsługuje WebXR — dostępny tryb biurkowy (podgląd 3D).';
+  $('btn-enter-vr').disabled = true;
+}
+
+/* ============================= THREE.JS SCENE ============================= */
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.getElementById('scene-container').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0B0714);
+scene.fog = new THREE.Fog(0x0B0714, 6, 22);
+
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.05, 60);
+camera.position.set(0,1.6,3.2);
+scene.add(camera); // must be in scene graph so camera-attached HUD sprite renders
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const grid1 = new THREE.GridHelper(30, 30, 0x29F1D6, 0x231B3A);
+scene.add(grid1);
+const grid2 = new THREE.GridHelper(30, 6, 0xFF3D8A, 0x000000);
+grid2.material.transparent = true; grid2.material.opacity = 0.25;
+scene.add(grid2);
+
+scene.add(new THREE.AmbientLight(0x8866ff, 0.6));
+const pl = new THREE.PointLight(0xff3d8a, 1.2, 20);
+pl.position.set(0,3,1);
+scene.add(pl);
+
+/* ---- Classic mode: hex ring + rails ---- */
+function makeHexRing(radius, color){
+  const shape = [];
+  for(let i=0;i<=6;i++){
+    const a = (i/6)*Math.PI*2;
+    shape.push(new THREE.Vector3(Math.cos(a)*radius, Math.sin(a)*radius, 0));
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(shape);
+  const mat = new THREE.LineBasicMaterial({color, linewidth:2});
+  return new THREE.Line(geo, mat);
+}
+const ringGroup = new THREE.Group();
+ringGroup.add(makeHexRing(0.55, 0x29F1D6), makeHexRing(0.4, 0xFF3D8A));
+ringGroup.position.set(0, 1.5, -1.4);
+scene.add(ringGroup);
+
+function makeRail(color, xOffset){
+  const points = [new THREE.Vector3(xOffset*3.2, 1.5, -8), new THREE.Vector3(xOffset*0.55, 1.5, -1.4)];
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({color, transparent:true, opacity:0.35});
+  return new THREE.Line(geo, mat);
+}
+const railL = makeRail(0x29F1D6, -1);
+const railR = makeRail(0xFF3D8A, 1);
+scene.add(railL, railR);
+
+/* ---- Dance mode: 4 target zones ---- */
+function makeSpriteLabel(text, color){
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = color; ctx.font = '900 90px system-ui, sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text, 64, 70);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({map:tex, transparent:true, depthTest:false});
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.3,0.3,1);
+  return sprite;
+}
+
+const DANCE_ZONES = {
+  U: {pos:new THREE.Vector3(0, 2.2, -1.1), color:0xFFC94A, label:'^'},
+  D: {pos:new THREE.Vector3(0, 0.85, -1.1), color:0x29F1D6, label:'v'},
+  L: {pos:new THREE.Vector3(-1.05, 1.5, -1.0), color:0x29F1D6, label:'<'},
+  R: {pos:new THREE.Vector3(1.05, 1.5, -1.0), color:0xFF3D8A, label:'>'},
+};
+const danceZoneGroup = new THREE.Group();
+Object.keys(DANCE_ZONES).forEach(key=>{
+  const z = DANCE_ZONES[key];
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(0.3, 0.035, 10, 24),
+    new THREE.MeshBasicMaterial({color:z.color, transparent:true, opacity:0.85})
+  );
+  torus.position.copy(z.pos);
+  torus.lookAt(0,1.5,3.2);
+  const label = makeSpriteLabel(z.label, '#'+z.color.toString(16).padStart(6,'0'));
+  label.position.copy(z.pos);
+  danceZoneGroup.add(torus, label);
+  z.mesh = torus;
+});
+danceZoneGroup.visible = false;
+scene.add(danceZoneGroup);
+
+function setModeVisuals(mode){
+  const isDance = mode==='dance';
+  ringGroup.visible = !isDance;
+  railL.visible = !isDance;
+  railR.visible = !isDance;
+  danceZoneGroup.visible = isDance;
+}
+setModeVisuals('classic');
+
+/* ---- In-VR HUD panel (canvas sprite attached to camera) ---- */
+function createHudSprite(){
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 220;
+  const ctx = canvas.getContext('2d');
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({map:texture, transparent:true, depthTest:false});
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(1.5, 0.32, 1);
+  sprite.position.set(0, -0.5, -1.15);
+  return {sprite, canvas, ctx, texture};
+}
+const hudPanel = createHudSprite();
+camera.add(hudPanel.sprite);
+
+let lastJudgmentText = '', lastJudgmentColor = '#F4F0FF';
+function drawHudPanel(){
+  const c = hudPanel.ctx;
+  c.clearRect(0,0,1024,220);
+  c.fillStyle = 'rgba(11,7,20,0.55)';
+  roundRect(c, 8,8,1008,204,18); c.fill();
+  c.strokeStyle = 'rgba(41,241,214,0.5)'; c.lineWidth=3;
+  roundRect(c, 8,8,1008,204,18); c.stroke();
+
+  c.textAlign='left'; c.textBaseline='middle';
+  c.fillStyle = '#FFC94A'; c.font='900 46px monospace';
+  c.fillText('Wynik '+score, 40, 58);
+  c.fillStyle = '#29F1D6'; c.font='900 34px monospace';
+  c.fillText('Combo '+combo, 40, 108);
+
+  c.textAlign='center';
+  c.fillStyle = lastJudgmentColor; c.font='900 40px system-ui, sans-serif';
+  c.fillText(lastJudgmentText, 512, 60);
+
+  c.fillStyle = '#8A7FA8'; c.font='600 22px system-ui, sans-serif';
+  const instr = state.mode==='dance'
+    ? 'Sięgnij ręką do świecącej strefy: góra / dół / lewo / prawo'
+    : 'Ściśnij spust: lewy kontroler = lewa nuta, prawy = prawa nuta';
+  c.fillText(instr, 512, 160);
+
+  c.fillStyle = '#F4F0FF'; c.font='700 18px system-ui, sans-serif';
+  c.fillText(state.currentLevel ? state.currentLevel.name : '', 512, 195);
+
+  hudPanel.texture.needsUpdate = true;
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+/* ============================= CONTROLLERS ============================= */
+const controllerHandedness = new Map();
+const controllerMeshes = new Map();
+const controllerFlash = new Map();
+const controllerWasInZone = new Map(); // controller -> currently-inside-zone key or null
+
+function makeControllerMesh(color){
+  const group = new THREE.Group();
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.13, 12), new THREE.MeshBasicMaterial({color}));
+  cone.rotation.x = Math.PI/2;
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.045,12,12), new THREE.MeshBasicMaterial({color, transparent:true, opacity:0.5}));
+  group.add(cone, glow);
+  group.userData.baseColor = color;
+  group.userData.glow = glow;
+  return group;
+}
+
+for(let i=0;i<2;i++){
+  const controller = renderer.xr.getController(i);
+  controller.addEventListener('connected', function(evt){
+    const hand = evt.data && evt.data.handedness ? evt.data.handedness : (i===0?'left':'right');
+    controllerHandedness.set(controller, hand);
+    const mesh = makeControllerMesh(hand==='left' ? 0x29F1D6 : 0xFF3D8A);
+    controller.add(mesh);
+    controllerMeshes.set(controller, mesh);
+    const label = makeSpriteLabel(hand==='left'?'L':'P', hand==='left'?'#29F1D6':'#FF3D8A');
+    label.position.set(0,0.08,0);
+    controller.add(label);
+  });
+  controller.addEventListener('disconnected', function(){
+    controllerHandedness.delete(controller);
+    controllerMeshes.delete(controller);
+  });
+  controller.addEventListener('selectstart', function(){
+    const hand = controllerHandedness.get(controller) || 'right';
+    controllerFlash.set(controller, 0.15);
+    if(state.mode === 'classic') handleHitClassic(hand === 'left' ? 'L' : 'R');
+  });
+  scene.add(controller);
+}
+
+/* ============================= AUDIO (synth, no external files) ============================= */
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function playKick(time, accent){
+  const ctx = ensureAudio();
+  const osc = ctx.createOscillator(); const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(accent ? 160 : 120, time);
+  osc.frequency.exponentialRampToValueAtTime(40, time+0.12);
+  gain.gain.setValueAtTime(state.volume*(accent?0.9:0.6), time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.18);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(time); osc.stop(time+0.2);
+}
+function playHat(time){
+  const ctx = ensureAudio();
+  const bufferSize = ctx.sampleRate*0.03;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for(let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1)*(1-i/bufferSize);
+  const src = ctx.createBufferSource(); src.buffer = buffer;
+  const gain = ctx.createGain(); gain.gain.setValueAtTime(state.volume*0.25, time);
+  const filter = ctx.createBiquadFilter(); filter.type='highpass'; filter.frequency.value=6000;
+  src.connect(filter).connect(gain).connect(ctx.destination);
+  src.start(time);
+}
+
+/* ============================= GAMEPLAY LOGIC ============================= */
+let notes = [];
+let score=0, combo=0, maxCombo=0, perfectCount=0, goodCount=0, missCount=0;
+let songStartTime = 0, beatDur = 0.5, travelTime = 1.7, running = false;
+
+const HIT_PERFECT = 0.09;
+const HIT_GOOD = 0.22;
+const ZONE_RADIUS = 0.38;
+
+function clearNotes(){
+  notes.forEach(n=>{ if(n.mesh) scene.remove(n.mesh); });
+  notes = [];
+}
+
+function spawnClassicNoteMesh(lane){
+  const color = lane==='L' ? 0x29F1D6 : (lane==='R' ? 0xFF3D8A : 0xFFC94A);
+  const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.14, 0), new THREE.MeshBasicMaterial({color}));
+  const xOff = lane==='L' ? -1 : 1;
+  mesh.position.set(xOff*3.2, 1.5, -8);
+  scene.add(mesh);
+  return mesh;
+}
+
+function startGame(useVR){
+  const lv = state.currentLevel;
+  beatDur = 60/lv.bpm;
+  travelTime = Math.max(1.1, beatDur*3.2);
+  ensureAudio();
+  setModeVisuals(state.mode);
+
+  showScreen(null);
+  $('hud').classList.add('active');
+  $('vr-status').textContent = useVR ? 'VR AKTYWNE' : 'TRYB BIURKOWY';
+  $('lane-hints-classic').style.display = state.mode==='dance' ? 'none' : 'flex';
+  $('dance-pad').style.display = state.mode==='dance' ? 'block' : 'none';
+
+  score=0; combo=0; maxCombo=0; perfectCount=0; goodCount=0; missCount=0;
+  lastJudgmentText=''; drawHudPanel();
+  updateHud();
+  clearNotes();
+  running = true;
+
+  const ctx = ensureAudio();
+  songStartTime = ctx.currentTime + 1.2;
+
+  const pattern = state.mode==='dance' ? lv.dancePattern : lv.classicPattern;
+
+  pattern.forEach((val, i)=>{
+    const targetTime = songStartTime + i*beatDur;
+    playHat(targetTime);
+    if(state.mode==='dance'){
+      if(val !== '.'){
+        playKick(targetTime, val==='U');
+        notes.push({dir:val, targetTime, resolved:false, missed:false});
+      }
+    } else {
+      if(val !== 0){
+        playKick(targetTime, val===3);
+        const lanes = val===3 ? ['L','R'] : [val===1?'L':'R'];
+        lanes.forEach(lane=>{
+          notes.push({beatIndex:i, lane, targetTime, spawnTime:targetTime-travelTime, mesh:null, resolved:false, missed:false});
+        });
+      }
+    }
+  });
+  state.songEndTime = songStartTime + pattern.length*beatDur + travelTime + 0.6;
+
+  if(useVR){
+    navigator.xr.requestSession('immersive-vr', {optionalFeatures:['local-floor','bounded-floor','dom-overlay']})
+      .then(session=>{
+        state.session = session;
+        renderer.xr.setSession(session);
+        session.addEventListener('end', onXRSessionEnd);
+      })
+      .catch(err=>{
+        console.warn('VR session failed, falling back to desktop mode', err);
+        state.desktopMode = true;
+      });
+  } else {
+    state.desktopMode = true;
+  }
+}
+
+function onXRSessionEnd(){ state.session = null; if(running) endGame(false); }
+
+function endGame(userQuit){
+  running = false;
+  clearNotes();
+  $('hud').classList.remove('active');
+  if(state.session){ try{ state.session.end(); }catch(e){} state.session = null; }
+  state.desktopMode = false;
+  if(userQuit){ showScreen('screen-title'); return; }
+  const total = perfectCount+goodCount+missCount;
+  const accuracy = total>0 ? (perfectCount + goodCount*0.5)/total : 0;
+  let grade = 'C';
+  if(accuracy > 0.95) grade = 'S'; else if(accuracy > 0.85) grade = 'A'; else if(accuracy > 0.65) grade = 'B';
+  $('res-score').textContent = score;
+  $('res-grade').textContent = grade;
+  $('res-perfect').textContent = perfectCount;
+  $('res-good').textContent = goodCount;
+  $('res-miss').textContent = missCount;
+  $('res-combo').textContent = maxCombo;
+  showScreen('screen-results');
+}
+
+function updateHud(){
+  $('hud-score').textContent = score;
+  $('hud-combo').textContent = combo;
+  drawHudPanel();
+}
+
+function showJudgment(text, color){
+  const el = $('judgment');
+  el.textContent = text; el.style.color = color;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  lastJudgmentText = text; lastJudgmentColor = color;
+  drawHudPanel();
+}
+
+function gradeAndScore(diff, note){
+  note.resolved = true;
+  if(note.mesh){ scene.remove(note.mesh); note.mesh = null; }
+  if(diff <= HIT_PERFECT){
+    perfectCount++; combo++; score += 100 + Math.min(combo,50)*2;
+    showJudgment('Perfect', '#29F1D6');
+  } else {
+    goodCount++; combo++; score += 50 + Math.min(combo,50);
+    showJudgment('Good', '#FFC94A');
+  }
+  maxCombo = Math.max(maxCombo, combo);
+  updateHud();
+}
+
+function handleHitClassic(lane){
+  if(!running) return;
+  const ctx = ensureAudio();
+  const now = ctx.currentTime - (state.audioOffset/1000);
+  let best=null, bestDiff=Infinity;
+  notes.forEach(n=>{
+    if(n.resolved || n.lane !== lane) return;
+    const diff = Math.abs(n.targetTime - now);
+    if(diff < bestDiff){ bestDiff = diff; best = n; }
+  });
+  if(best && bestDiff <= HIT_GOOD){ gradeAndScore(bestDiff, best); }
+  else { combo = 0; updateHud(); }
+}
+
+function handleHitDance(dir){
+  if(!running) return;
+  const ctx = ensureAudio();
+  const now = ctx.currentTime - (state.audioOffset/1000);
+  let best=null, bestDiff=Infinity;
+  notes.forEach(n=>{
+    if(n.resolved || n.dir !== dir) return;
+    const diff = Math.abs(n.targetTime - now);
+    if(diff < bestDiff){ bestDiff = diff; best = n; }
+  });
+  if(best && bestDiff <= HIT_GOOD){ gradeAndScore(bestDiff, best); flashZone(dir, true); }
+  else { combo = 0; updateHud(); flashZone(dir, false); }
+}
+
+function flashZone(dir, hit){
+  const z = DANCE_ZONES[dir];
+  if(!z) return;
+  z.mesh.material.color.set(hit ? 0x66ff99 : 0xff4455);
+  z.flashUntil = performance.now() + 220;
+}
+
+// Desktop fallback input
+window.addEventListener('keydown', (e)=>{
+  if(!running) return;
+  const k = e.key.toLowerCase();
+  if(state.mode==='classic'){
+    if(k==='f') handleHitClassic('L');
+    if(k==='j') handleHitClassic('R');
+  } else {
+    if(k==='arrowup') handleHitDance('U');
+    if(k==='arrowdown') handleHitDance('D');
+    if(k==='arrowleft') handleHitDance('L');
+    if(k==='arrowright') handleHitDance('R');
+  }
+});
+$('key-left').addEventListener('pointerdown', ()=>handleHitClassic('L'));
+$('key-right').addEventListener('pointerdown', ()=>handleHitClassic('R'));
+$('pad-up').addEventListener('pointerdown', ()=>handleHitDance('U'));
+$('pad-down').addEventListener('pointerdown', ()=>handleHitDance('D'));
+$('pad-left').addEventListener('pointerdown', ()=>handleHitDance('L'));
+$('pad-right').addEventListener('pointerdown', ()=>handleHitDance('R'));
+
+/* ============================= RENDER LOOP ============================= */
+const tmpV = new THREE.Vector3();
+let frameCount = 0;
+
+function tick(){
+  frameCount++;
+  if(running){
+    const ctx = ensureAudio();
+    const now = ctx.currentTime - (state.audioOffset/1000);
+
+    // controller trigger flash decay
+    controllerMeshes.forEach((mesh, controller)=>{
+      const f = controllerFlash.get(controller) || 0;
+      const scale = 1 + Math.max(0,f)*3;
+      mesh.userData.glow.scale.set(scale,scale,scale);
+      if(f>0) controllerFlash.set(controller, f - 1/60);
+    });
+
+    if(state.mode==='classic'){
+      notes.forEach(n=>{
+        if(n.resolved) return;
+        if(now >= n.spawnTime && !n.mesh) n.mesh = spawnClassicNoteMesh(n.lane);
+        if(n.mesh){
+          const progress = (now - n.spawnTime) / travelTime;
+          const xOff = n.lane==='L' ? -1 : 1;
+          const startX = xOff*3.2, endX = xOff*0.55;
+          n.mesh.position.x = startX + (endX-startX)*Math.min(progress,1.3);
+          n.mesh.position.z = -8 + (-1.4 - -8)*Math.min(progress,1.3);
+          n.mesh.rotation.x += 0.05; n.mesh.rotation.y += 0.05;
+        }
+        if(!n.resolved && now > n.targetTime + HIT_GOOD && !n.missed){
+          n.missed = true; n.resolved = true; missCount++; combo = 0;
+          showJudgment('Miss', '#8A7FA8');
+          if(n.mesh){ scene.remove(n.mesh); n.mesh = null; }
+          updateHud();
+        }
+      });
+      const beatPhase = ((now - songStartTime) / beatDur) % 1;
+      const pulse = 1 + (beatPhase < 0.15 ? (0.15-beatPhase)/0.15*0.25 : 0);
+      ringGroup.scale.set(pulse,pulse,1);
+    } else {
+      // Dance mode: telegraph upcoming beat per zone via glow pulse; check controller entry
+      Object.keys(DANCE_ZONES).forEach(dir=>{
+        const z = DANCE_ZONES[dir];
+        if(z.flashUntil && performance.now() < z.flashUntil){
+          // holding flash color
+        } else {
+          z.mesh.material.color.set(z.color);
+          const upcoming = notes.find(n=>!n.resolved && n.dir===dir && n.targetTime > now - HIT_GOOD);
+          if(upcoming){
+            const dist = upcoming.targetTime - now;
+            const glow = Math.max(0, 1 - dist/0.6);
+            const s = 1 + glow*0.5;
+            z.mesh.scale.set(s,s,s);
+          } else {
+            z.mesh.scale.set(1,1,1);
+          }
+        }
+      });
+
+      // continuous controller-in-zone detection (edge-triggered)
+      controllerMeshes.forEach((mesh, controller)=>{
+        controller.getWorldPosition(tmpV);
+        let insideKey = null;
+        Object.keys(DANCE_ZONES).forEach(dir=>{
+          if(tmpV.distanceTo(DANCE_ZONES[dir].pos) < ZONE_RADIUS) insideKey = dir;
+        });
+        const wasInside = controllerWasInZone.get(controller) || null;
+        if(insideKey && insideKey !== wasInside){
+          handleHitDance(insideKey);
+        }
+        controllerWasInZone.set(controller, insideKey);
+      });
+
+      notes.forEach(n=>{
+        if(!n.resolved && now > n.targetTime + HIT_GOOD && !n.missed){
+          n.missed = true; n.resolved = true; missCount++; combo = 0;
+          showJudgment('Miss', '#8A7FA8'); flashZone(n.dir, false);
+          updateHud();
+        }
+      });
+    }
+
+    if(frameCount % 20 === 0) drawHudPanel();
+
+    if(state.songEndTime && now > state.songEndTime) endGame(false);
+  }
+}
+
+renderer.setAnimationLoop(()=>{ tick(); renderer.render(scene, camera); });
+
+})();
+</script>
+</body>
+</html>
